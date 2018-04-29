@@ -1,0 +1,5 @@
+## Title: Talkie
+## Description: attempt to implement group voice chat integration using Discord
+## APIVersion: 100022
+
+Talkie.lua
