@@ -1,6 +1,19 @@
 Talkie = {}
 Talkie.name = "Talkie"
 Talkie.version = "1"
+Talkie.varversion = 1
+
+Talkie.Default = {
+	isGrouped = false,
+	isLeader = false,
+	groupSize = 1,
+	leaderUnitTag = nil,
+	leaderName = nil,
+	client = "Discord",
+	preamble = nil,
+	invite = nil,
+	invitePending = false
+}
 
 function Talkie.OnAddOnLoaded(event, addonName)
   if addonName == Talkie.name then
@@ -9,15 +22,14 @@ function Talkie.OnAddOnLoaded(event, addonName)
 end
 
 function Talkie:Initialize()
+  Talkie.saved = ZO_SavedVars:New("TalkieVars", Talkie.varversion, nil, Talkie.Default)
+  Talkie.saved.preamble = Talkie.name .. ": [" .. Talkie.saved.client .. "] "
+  self:SaveGroupState()
 
   -- State variables
   self.playerName = GetUnitName("player")
   self.displayName = GetDisplayName()
-  self.groupState = self:GetGroupState()
-  self.clientState = self:InitClientState()
-  self.clientState.invitePending = false
   self.isInCombat = false
-  self.invitePending = false
 
   -- Event handlers
   EVENT_MANAGER:RegisterForEvent(Talkie.name, EVENT_GROUP_MEMBER_JOINED, Talkie.OnMemberJoin)
@@ -33,10 +45,10 @@ end
 -- ESO helper functions
 ------------------------------------------------------------------------------
 
--- get full name i.e. charact^er@Display
+-- get full name i.e. charact^er@DisplayName
 function Talkie:GetFullName(tag)
   if tag then
-    local cn = GetUnitName(tag) or "none"
+    local cn = GetRawUnitName(tag) or "none"
     local dn = GetUnitDisplayName(tag) or "none"
     return cn .. DecorateDisplayName(dn)
   else
@@ -44,23 +56,21 @@ function Talkie:GetFullName(tag)
   end
 end
 
--- return all values related to group state in a single table
-function Talkie:GetGroupState()
-  local g = {}
-  g.isGrouped = IsUnitGrouped("player")
+-- update all saved variables related to group state
+function Talkie:SaveGroupState()
+  Talkie.saved.isGrouped = IsUnitGrouped("player")
 
-  if g.isGrouped then
-    g.groupSize = GetGroupSize() or "0"
-    g.isGroupLeader = IsUnitGroupLeader("player")
-    g.leaderUnitTag = GetGroupLeaderUnitTag()
-    g.leaderName = Talkie:GetFullName(g.leaderUnitTag)
+  if Talkie.saved.isGrouped then
+    Talkie.saved.groupSize = GetGroupSize() or 1
+    Talkie.saved.isLeader = IsUnitGroupLeader("player")
+    Talkie.saved.leaderUnitTag = GetGroupLeaderUnitTag()
+    Talkie.saved.leaderName = Talkie:GetFullName(Talkie.saved.leaderUnitTag)
   else
-    g.groupsize = 1
-    g.isGroupLeader = false
-    g.leaderUnitTag = nil
-    g.leaderName = nil
+    Talkie.saved.groupSize = 1
+    Talkie.saved.isLeader = false
+    Talkie.saved.leaderUnitTag = nil
+    Talkie.saved.leaderName = nil
   end
-  return g
 end
 
 ------------------------------------------------------------------------------
@@ -68,17 +78,13 @@ end
 ------------------------------------------------------------------------------
 
 function Talkie:OnMemberJoin(name)
-  d("OnMemberJoin(" .. name .. ")")
-  local new = Talkie:GetGroupState()
-
   d(name .. " joined the group as a new member")
+  Talkie:SaveGroupState()
 
-  if new.isGroupLeader then
+  if Talkie.saved.isLeader then
     d("as leader I must invite new members to chat")
     Talkie:ChatInviteGroup()
   end
-
-  Talkie.groupState = new -- update global group state
 end
 
 function Talkie:OnMemberLeave(name, reason, isLocal, isLeader, dn, vote)
@@ -118,7 +124,7 @@ function Talkie:OnMemberLeave(name, reason, isLocal, isLeader, dn, vote)
     d(name .. dn .. action .. " the group" .. wasLeader)
   end
 
-  Talkie.groupState = Talkie:GetGroupState() -- update global group state
+  Talkie:SaveGroupState()
 end
 
 function Talkie:OnLeaderChange(tag)
@@ -128,31 +134,36 @@ function Talkie:OnLeaderChange(tag)
   if tag == "player" then
     d("I am now leader")
     Talkie:GroupLeaderSetup()
-  elseif Talkie.groupState.isGroupLeader then
+  elseif Talkie.saved.isLeader then
     d("I am no longer leader")
     Talkie:GroupLeaderTeardown()
   else
     d(fn .. " is new group leader")
   end
 
-  Talkie.groupState = Talkie:GetGroupState() -- update global group state
+  Talkie:SaveGroupState()
 end
 
 -- Chat parser - still working up to coding the link handler
 function Talkie:OnChatMessage(chan, from, text, isCS, fromDN)
-  local channel = false
-  if chan == CHAT_CHANNEL_PARTY then
-    channel = "group"
-  end
+  local channel = nil
+  if chan == CHAT_CHANNEL_PARTY then channel = "group"
+  else return end
 
   local first = from or "none"
-  local last = fromDN or "@none"
+  local last = fromDN or "none"
   local author = first .. DecorateDisplayName(last)
-  local leader = Talkie.groupState.leaderName or "none"
+  local leader = Talkie.saved.leaderName or "lnone"
 
-  if channel then
-    d(Talkie.name .. ": [" .. author  .. "] " .. channel .. ": " .. text)
-    d("Author: " .. author .. ", Leader: " .. leader)
+  d(Talkie.name .. ": [" .. author  .. "] " .. channel .. ": " .. text)
+  d("Author: " .. author .. ", Leader: " .. leader)
+  if author == leader then
+    d("message came from group leader")
+    i,j = string.find(text,Talkie.saved.preamble)
+    if not i then return end
+    local invite = string.sub(text, j+1)
+    d("received chat invite: " .. invite)
+    Talkie:GroupMemberSetup(invite)
   end
 end
 
@@ -166,7 +177,7 @@ function Talkie:OnCombatState(inCombat)
   Talkie.isInCombat = false
 
   -- send pending invitations
-  if Talkie.invitePending then
+  if Talkie.saved.invitePending then
     Talkie:ChatInviteGroup()
   end
 end
@@ -180,38 +191,39 @@ end
 -- Precondition: unit is grouped
 -- Precondition: unit is leader
 function Talkie:ChatInviteGroup()
-  if not IsUnitGrouped("player") then
-    d("do not send chat information if you are not grouped")
+  if not Talkie.saved.invite then
+    d("Talkie:ChatInviteGroup(): invite is empty")
     return
-  end
-  if not IsUnitGroupLeader("player") then
-    d("do not send chat information if you are not group leader")
+  elseif not Talkie.saved.isGrouped then
+    d("Talkie:ChatInviteGroup(): not grouped")
+    return
+  elseif not Talkie.saved.isLeader then
+    d("Talkie:ChatInviteGroup(): not group leader")
     return
   end
 
   -- DO NOT interrupt the leader while in combat!!
   -- take a note to come back and do this after combat is over
   if Talkie.isInCombat then
-    d("do not disturb the group leader while in combat")
-    Talkie.invitePending = true
+    d("Talkie:ChatInviteGroup(): in combat")
+    Talkie.saved.invitePending = true
     return
   end
 
-  d("Remember to send voice chat invite to the group")
-  local c = Talkie.clientState
-  local command = "/group " .. c.preamble .. c.invitation
+  d("Send voice chat invite to the group")
+  local command = "/group " .. Talkie.saved.preamble .. Talkie.saved.invite
   d(command)
 
   -- check if command is already there
-  local text = CHAT_SYSTEM.textEntry:GetText()
+  local text = CHAT_SYSTEM.textEntry:GetText() or ""
   if command == text then
     d("chat command is already in the chat bar - skipping")
     return
   end
 
-  -- Put command in the chat bar - leader has to click send
+  -- Put command in the chat bar - leader still has to click send
   CHAT_SYSTEM:StartTextEntry(command)
-  Talkie.invitePending = false
+  Talkie.save.invitePending = false
 end
 
 
@@ -221,7 +233,7 @@ end
 --    * GroupLeaderSetup()     create channel and invite members
 --    * GroupLeaderTeardown()  cleanup channel after chat is over
 --    * GroupMemberSetup()     for members to join channel
---    * GroupMemberTearDown()  for members to leave channel
+--     GroupMemberTearDown()  for members to leave channel
 -- TODO: abstract this interface to an embedded library (lib/discord.lua)
 -- TODO: implement libraries for TeamSpeak and others (lib/teamspeak.lua) etc.
 -- TODO: settings panel to select installed chat clients
@@ -230,41 +242,45 @@ end
 -- TODO: group members discover which cient to use based on invite format
 ------------------------------------------------------------------------------
 
--- initialize client state variables for now until we know more
-function Talkie:InitClientState()
-  local c = {}
-  c.preferredClient = "Discord"
-  c.connected = false
-  c.invitePending = false
-  c.invitation = "test_mock_discord_invitation"
-  c.preamble = Talkie.name .. ": [" .. c.preferredClient .. "] "
-  return c
-end
-
--- Group Leader is responsible for hosting voice chat channel
--- and for maintaining the invitation
+-- Group Leader maintains the voice chat invitation for everyone else
+-- precondition: player is group leader
+-- postcondition: invite is valid and saved invite != nil
 function Talkie:GroupLeaderSetup()
+  if not Talkie.saved.isLeader then return end
   d("Remember to initialize voice chat channel")
-  d("Remember to request invite to channel")
+  -- request invite here - remove dummy data below for production
+  Talkie.saved.invite = "https://discord.gg/5dShrb"
+  d("Setting invitation = " .. Talkie.saved.invite)
+  Talkie:ChatInviteGroup()
 end
 
 -- Group leader needs to clean up after they leave or after the chat is over 
+-- precondition: player is group leader and saved invite != nil
+-- postcondition: invite is nullified and saved invite == nil
 function Talkie:GroupLeaderTeardown()
+  if not Talkie.saved.isLeader then return end
   d("Remember to take down your voice chat channel and/or cancel invites")
+  -- cancel invites here
+  Talkie.saved.invite = nil
 end
 
--- members use invitation to join chat
--- postcondition: .clientState.connected = true
-function Talkie:GroupMemberSetup()
-  d("Follow your invite link to join voice chat")
-  Talkie.clientState.connected = true
+-- group members use invitation to join chat
+-- precondition: invite != nil
+-- postcondition: saved invite != nil
+function Talkie:GroupMemberSetup(invite)
+  d("Follow your invite link to join voice chat: " .. invite)
+  -- connect using invite here
+  if Talkie.saved.isLeader then return end
+  Talkie.saved.invite = invite
 end
 
 -- all members need to disconnect when they leave the group
--- postcondition: .clientState.connected = false
+-- postcondition: if not isLeader then invite == nil
 function Talkie:GroupMemberTeardown()
   d("Remember to disconnect from voice chat")
-  Talkie.clientState.connected = false
+  -- disconnect here
+  if Talkie.saved.isLeader then return end
+  Talkie.saved.invite = nil
 end
 
  

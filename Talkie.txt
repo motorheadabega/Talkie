@@ -1,6 +1,7 @@
 ## Title: Talkie
 ## Description: attempt to implement group voice chat integration using Discord
 ## APIVersion: 100022
+## SavedVariables: TalkieVars
 
 ##
 ## This Add-on is not created by, affiliated with or sponsored by ZeniMax Media
