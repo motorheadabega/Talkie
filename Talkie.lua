@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  Libraries --
+-------------------------------------------------------------------------------
+local LAM2 = LibStub:GetLibrary("LibAddonMenu-2.0")
+
 Talkie = {}
 Talkie.name = "Talkie"
 Talkie.version = "1"
@@ -11,6 +16,7 @@ Talkie.Default = {
 	leaderName = nil,
 	client = "Discord",
 	preamble = nil,
+	leaderInvite = "",
 	invite = nil,
 	invitePending = false
 }
@@ -30,6 +36,9 @@ function Talkie:Initialize()
   self.playerName = GetUnitName("player")
   self.displayName = GetDisplayName()
   self.isInCombat = false
+
+  -- Menu panel
+  Talkie:CreateSettingsWindow()
 
   -- Event handlers
   EVENT_MANAGER:RegisterForEvent(Talkie.name, EVENT_GROUP_MEMBER_JOINED, Talkie.OnMemberJoin)
@@ -83,7 +92,13 @@ function Talkie:OnMemberJoin(name)
 
   if Talkie.saved.isLeader then
     d("as leader I must invite new members to chat")
-    Talkie:ChatInviteGroup()
+    if Talkie.saved.invite then
+      -- send the invite we have
+      Talkie:ChatInviteGroup()
+    else
+      -- need to set up
+      Talkie:GroupLeaderSetup()
+    end
   end
 end
 
@@ -156,7 +171,8 @@ function Talkie:OnChatMessage(chan, from, text, isCS, fromDN)
   local leader = Talkie.saved.leaderName or "lnone"
 
   d(Talkie.name .. ": [" .. author  .. "] " .. channel .. ": " .. text)
-  d("Author: " .. author .. ", Leader: " .. leader)
+  d("Author: " .. author)
+  d("Leader: " .. leader)
   if author == leader then
     d("message came from group leader")
     i,j = string.find(text,Talkie.saved.preamble)
@@ -223,7 +239,7 @@ function Talkie:ChatInviteGroup()
 
   -- Put command in the chat bar - leader still has to click send
   CHAT_SYSTEM:StartTextEntry(command)
-  Talkie.save.invitePending = false
+  Talkie.saved.invitePending = false
 end
 
 
@@ -249,7 +265,7 @@ function Talkie:GroupLeaderSetup()
   if not Talkie.saved.isLeader then return end
   d("Remember to initialize voice chat channel")
   -- request invite here - remove dummy data below for production
-  Talkie.saved.invite = "https://discord.gg/5dShrb"
+  Talkie.saved.invite = Talkie.saved.leaderInvite
   d("Setting invitation = " .. Talkie.saved.invite)
   Talkie:ChatInviteGroup()
 end
@@ -281,6 +297,48 @@ function Talkie:GroupMemberTeardown()
   -- disconnect here
   if Talkie.saved.isLeader then return end
   Talkie.saved.invite = nil
+end
+
+-- Menu panel definition
+function Talkie:CreateSettingsWindow()
+
+  local panelData = {
+    type = "panel",
+    name = "Talkie",
+    displayName = "Talkie Voice Chat Integration",
+    author = "motorheadabega",
+    version = Talkie.version,
+    slashCommand = "/talkie",
+    registerForRefresh = true,
+    registerForDefaults = true,
+  }
+  LAM2:RegisterAddonPanel("Talkie_panel", panelData)
+
+  local optionsData = {
+    [1] = {
+        type = "header",
+        name = "Talkie",
+        width = "full",
+    },
+    [2] = {
+        type = "description",
+        title = "Talkie",
+        text = "Talkie Voice Chat Integration using Discord",
+        width = "full",
+    },
+    [3] = {
+      type = "editbox",
+      name = "Discord voice chat invitation",
+      tooltip = "Paste your own group voice chat invitation here. This is the invitation that you will send to others when you are grop leader.",
+      getFunc = function() return Talkie.saved.leaderInvite end,
+      setFunc = function(text) Talkie.saved.leaderInvite = text end,
+      isMultiline = false,
+      width = "full",
+      warning = "Will need to reload the UI.",
+      default = "",   --(optional)
+    },
+  }
+  LAM2:RegisterOptionControls("Talkie_panel", optionsData)
 end
 
  
