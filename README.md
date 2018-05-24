@@ -1,5 +1,7 @@
 # Talkie
 ESO AddOn to provide Discord voice chat integration to group play on Elder Scrolls online
+## Update
+I started this project with the best of intentions and the wide-eyed idealism of a newborn newb. I had expected to be able to communicate using simple REST calls and/or access to shell commands. I had thought luasocket to be part of the lua language, where as it is a user-created library, which is not allowed for use in ESO AddOns. I am not sure what is the complete reason for this, but it probably a very good reason, which I will not contend. I have found that I can pass information out of ESO using saved variables, but this would not provide th functionality I am looking for. This project will be considered closed. I may make one or two more submissions just clean up code and debug statements in case someone ever wants to revive the idea for themselves. Maybe you can succeed where I have failed :) It was still fun.
 ## Why do we need this?
 I have found numerous forum threads going back over several years on which users have pleaded for some kind of (working) Discord overlay support for Elder Scrolls Online. For whatever reason, not much has materialized in the present.
 As a result, I am considering the possibility of implementing this as an ESO Addon: because it is in my power to do so, and because it sounds like an interesting challenge.
